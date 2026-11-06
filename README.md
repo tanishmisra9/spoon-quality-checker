@@ -124,4 +124,6 @@ Scraping speed is set by Wikimedia (about 6 to 10 photos a minute after a short 
 The 5-slide presentation lives outside the repo (it embeds other people's phone photos). It was built from this repo's results and real screenshots of the app.
 
 ## Licensing
+The code is MIT licensed (see `LICENSE`). The scraped web photos are not included, and each keeps its own Creative Commons licence, recorded in `data/spoon/sources.csv`.
+
 Scraped images are CC-licensed or public domain, with licence and creator stored per image. Many CC licences require attribution if you republish them; images are not committed to the repo.
