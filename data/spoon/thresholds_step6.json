@@ -1,0 +1,7 @@
+{
+  "blur_min": 14.5,
+  "dark_max_mean": 170.5,
+  "bright_max_frac": 0.08529348076722848,
+  "contrast_min_std": 94.5,
+  "glare_max_frac": 0.011022613042718166
+}

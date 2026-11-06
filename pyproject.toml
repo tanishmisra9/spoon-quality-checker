@@ -1,0 +1,23 @@
+[project]
+name = "everyday-object-poc"
+version = "0.1.0"
+description = "Guided image capture PoC with image-quality checks"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "opencv-python-headless>=4.10",
+    "numpy>=2.0",
+    "pillow>=11.0",
+    "openai>=1.60",
+    "python-multipart>=0.0.9",
+    "python-dotenv>=1.0",
+    "anthropic>=2.2.0",
+    "pydantic>=2.13.5",
+]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

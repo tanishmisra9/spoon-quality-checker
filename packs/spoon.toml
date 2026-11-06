@@ -1,0 +1,62 @@
+# Everything object-specific lives here. config.py loads packs/$PACK.toml (default: spoon).
+# To port to a new object: copy this file, change object/views/queries/scenes and the fault wording, then run
+# scrape -> label -> evaluate with PACK=<name>. No code edits.
+object = "metal spoon"
+noun = "spoon"
+title = "Capture the spoon"
+
+[[views]]
+id = "top"
+label = "Top, bowl up"
+prompt = "viewed from directly above with the bowl facing up"
+[[views]]
+id = "bottom"
+label = "Bottom, bowl down"
+prompt = "viewed from directly above with the bowl facing down, showing the back of the bowl"
+[[views]]
+id = "side"
+label = "Side profile"
+prompt = "in side profile, showing the curve of the bowl and handle"
+[[views]]
+id = "bowl_close"
+label = "Bowl close-up"
+prompt = "close-up of the bowl of the spoon filling most of the frame"
+[[views]]
+id = "handle_close"
+label = "Handle close-up"
+prompt = "close-up of the handle of the spoon filling most of the frame"
+
+[scrape]
+# Wikimedia Commons search terms; each is crossed with the environments below.
+queries = ["spoon", "teaspoon", "tablespoon", "silver spoon", "stainless steel spoon", "serving spoon", "soup spoon", "brass spoon", "copper spoon", "dessert spoon", "ladle", "cutlery", "flatware", "silverware", "antique spoon", "sugar spoon", "measuring spoon", "spoon macro", "cuchara", "Löffel", "cuillère", "cucchiaio", "ложка", "スプーン", "勺子", "colher", "lepel", "łyżka", "kaşık", "spoon in coffee", "spoon honey", "spoon cooking", "spoon dishwasher", "spoon on table", "spoon reflection"]
+environments = ["", "table", "cafe", "cup", "sink", "drawer", "picnic", "hand", "restaurant", "kitchen", "outdoor"]
+
+[generate]
+# gpt-image-2 prompt grid. Metallic only on purpose: reflective surfaces are the hard case (glare, exposure).
+finishes = ["polished stainless steel", "brushed stainless steel", "silver-plated", "brass", "copper", "gold-tone", "mirror-polished silver", "tarnished antique silver"]
+scenes = ["in a kitchen drawer with other utensils", "on a picnic blanket outdoors", "on a hospital tray", "on a restaurant table next to a plate", "in a sink on a wet counter", "held in a hand", "on a cluttered desk", "on a cafe table beside a coffee cup", "on a car dashboard in sunlight", "on a wooden shelf in a dim room"]
+# fault_style -> adjectives for "A <style> phone photo of ...". The intended fault is metadata only; the Haiku label is the label.
+fault_styles = { clean = "sharp, well-exposed", out_of_focus = "out-of-focus, soft and blurry", shake = "motion-blurred, shaky", flash_glare = "harsh-flash, overexposed with strong glare", underexposed = "underexposed, dark and grainy", off_centre = "casual, off-centre, cluttered" }
+
+# Faults the labeler judges. `definition` is sent verbatim to the vision model.
+[faults.blur]
+definition = "The spoon itself is out of focus or motion-blurred, so edges and surface detail are soft. Sharp edges on a sharp spoon with a blurry background is NOT this fault."
+message = "Blurry, hold steady"
+[faults.dark]
+definition = "The spoon is too dark to see its shape and surface detail. A dark-coloured spoon that is well lit, or a dark background behind a well-lit spoon, is NOT this fault."
+message = "Too dark"
+[faults.bright]
+definition = "The spoon is overexposed: highlights are blown out and surface detail is lost. A naturally white or very light spoon that still shows its detail is NOT this fault."
+message = "Too bright / washed out"
+[faults.contrast]
+definition = "The spoon barely separates from what is around it or looks flat and hazy, so its outline is hard to make out."
+message = "Low contrast"
+[faults.glare]
+definition = "A bright reflection or flash hotspot washes out part of the spoon's surface so detail underneath is lost. Ordinary specular shine on polished metal that still shows the surface is NOT glare."
+message = "Glare, change the angle"
+[faults.resolution]
+labeled = false  # computed from pixels, never sent to the labeler
+message = "Image too small"
+[faults.no_object]
+labeled = false
+message = "Can't find the spoon in the box"

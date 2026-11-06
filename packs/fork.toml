@@ -1,0 +1,48 @@
+# Canary pack: proves the pipeline ports to another object with zero code edits (PACK=fork).
+object = "metal fork"
+noun = "fork"
+title = "Capture the fork"
+
+[[views]]
+id = "top"
+label = "Top, tines up"
+prompt = "viewed from directly above with the tines up"
+[[views]]
+id = "side"
+label = "Side profile"
+prompt = "in side profile"
+[[views]]
+id = "tines_close"
+label = "Tines close-up"
+prompt = "close-up of the tines filling most of the frame"
+
+[scrape]
+queries = ["fork", "dinner fork", "silver fork", "stainless steel fork"]
+environments = ["", "table", "cafe", "plate", "kitchen", "drawer"]
+
+[generate]
+finishes = ["polished stainless steel", "silver-plated", "brass"]
+scenes = ["in a kitchen drawer with other utensils", "on a restaurant table next to a plate", "on a cluttered desk"]
+fault_styles = { clean = "sharp, well-exposed", out_of_focus = "out-of-focus, soft and blurry" }
+
+[faults.blur]
+definition = "The fork itself is out of focus or motion-blurred. A sharp fork with a blurry background is NOT this fault."
+message = "Blurry, hold steady"
+[faults.dark]
+definition = "The fork is too dark to see its shape. A well-lit dark fork or a dark background is NOT this fault."
+message = "Too dark"
+[faults.bright]
+definition = "The fork is overexposed and detail is lost. A naturally light fork that shows detail is NOT this fault."
+message = "Too bright / washed out"
+[faults.contrast]
+definition = "The fork barely separates from its surroundings or looks flat and hazy."
+message = "Low contrast"
+[faults.glare]
+definition = "A reflection or flash hotspot washes out part of the fork so detail is lost. Ordinary shine on polished metal that still shows the surface is NOT glare."
+message = "Glare, change the angle"
+[faults.resolution]
+labeled = false  # computed from pixels, never sent to the labeler
+message = "Image too small"
+[faults.no_object]
+labeled = false
+message = "Can't find the fork in the box"
