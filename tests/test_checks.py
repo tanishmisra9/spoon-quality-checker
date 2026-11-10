@@ -78,3 +78,20 @@ def test_dark_background_is_not_a_dark_spoon():
 def test_pale_spoon_on_pale_background_is_not_overexposed():
     r = check(scene(fg=225, bg=200))  # white ceramic-ish spoon on a light table, detail intact
     assert "bright" not in r["failed"], r["scores"]
+
+
+def test_edge_sharpness_separates_sharp_from_defocused():
+    """roi_edge is contrast-free: a sharp object scores clearly above a defocused one, whichever is brighter."""
+    from backend.checks import score
+    sharp, soft = score(scene())["roi_edge"], score(cv2.GaussianBlur(scene(), (0, 0), 6))["roi_edge"]
+    assert sharp > soft + 0.3, (sharp, soft)
+
+
+def test_hotspot_check_flags_one_big_blown_out_patch_on_the_object():
+    from backend.checks import score, verdict
+    from config import DRAFT_THRESHOLDS
+    img = scene()
+    cv2.circle(img, (600, 420), 130, (255, 255, 255), -1)  # one saturated hotspot on the bowl
+    t = {**DRAFT_THRESHOLDS, "hot_max_frac": 0.004, "glare_max_frac": 1.0}  # frame-level check off: only the hotspot rule can fire
+    assert "glare" in verdict(score(img), t)["failed"]
+    assert "glare" not in verdict(score(scene()), t)["failed"]

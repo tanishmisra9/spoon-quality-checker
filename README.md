@@ -127,3 +127,7 @@ The 5-slide presentation lives outside the repo (it embeds other people's phone 
 The code is MIT licensed (see `LICENSE`). The scraped web photos are not included, and each keeps its own Creative Commons licence, recorded in `data/spoon/sources.csv`.
 
 Scraped images are CC-licensed or public domain, with licence and creator stored per image. Many CC licences require attribution if you republish them; images are not committed to the repo.
+
+## Blur and glare (second pass)
+
+Blur now fails on low Laplacian energy OR a low edge-sharpness ratio; glare on the frame-level blob OR a single-hotspot rule. Measured on real, simulated and AI-edited faults at the same false-alarm budget: real blur recall 4/27 to 13/27, glare headline +31%, blur headline +24%. Method, failed attempts and caveats (real glare is only 4 photos): [docs/blur_glare.md](docs/blur_glare.md). Reproduce with `uv run scripts/bench_blur_glare.py`.

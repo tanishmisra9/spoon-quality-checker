@@ -98,7 +98,7 @@ def label_one(client, model, path):
 
 
 def images():
-    return sorted(p for sub in ("raw", "generated", "phone") if (DATA / sub).exists() for p in (DATA / sub).glob("*.[jp][pn]g"))
+    return sorted(p for sub in ("raw", "generated", "phone", "edited") if (DATA / sub).exists() for p in (DATA / sub).glob("*.[jp][pn]g"))
 
 
 def main():

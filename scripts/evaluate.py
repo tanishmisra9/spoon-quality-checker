@@ -41,12 +41,12 @@ GOAL_FA = 0.10
 CTRL_TUNE = {"ctrl_bg_blur", "ctrl_shine"}
 PHONE_CAP = 40  # max phone photos per (person, scene) used for tuning: 112 near-twins of one desk must not make up a third of the phone data
 # ROI score key, threshold key, direction ('low' = fail when score < thr)
-CHECKS = {  # keep in sync with backend/checks.py verdict(); features chosen by grouped CV (see README)
-    "blur": ("roi_blur", "blur_min", "low"),
-    "dark": (lambda s: max(s["roi_p95"], s["frame_p95"]), "dark_max_mean", "low"),  # brighter of object and frame
-    "bright": ("roi_bright_u", "bright_max_frac", "high"),
-    "contrast": ("roi_contrast", "contrast_min_std", "low"),
-    "glare": ("frame_glare_int", "glare_max_frac", "high"),
+CHECKS = {  # keep in sync with backend/checks.py verdict(); features chosen by grouped CV (see README). A check with several features fails if ANY of them trips.
+    "blur": [("roi_blur", "blur_min", "low"), ("roi_edge", "edge_min", "low")],
+    "dark": [(lambda s: max(s["roi_p95"], s["frame_p95"]), "dark_max_mean", "low")],  # brighter of object and frame
+    "bright": [("roi_bright_u", "bright_max_frac", "high")],
+    "contrast": [("roi_contrast", "contrast_min_std", "low")],
+    "glare": [("frame_glare_int", "glare_max_frac", "high"), ("roi_hot", "hot_max_frac", "high")],
 }
 
 # ---- Success criteria for the goal "new version wrongly rejects at most ~10% of clean photos" (set before this run) ----
@@ -78,6 +78,8 @@ def split_of(image_id, creator, pool_creators):
     Sealed photos from photographers who also appear in the pool are new photos but not new photographers; load() flags the difference."""
     if image_id.startswith("gen_"):
         return "gen"
+    if image_id.startswith("ed_"):
+        return "edit"  # gpt-image-2 added a fault to a real photo: never tuned on, only reported (scripts/edit_faults.py)
     if image_id.startswith("ph_"):
         return "phone"  # the user's own iPhone photos: scored separately; they join tuning only in a later, reported step
     return "sealed" if image_id >= SEALED_FROM else "pool"
@@ -100,10 +102,10 @@ def load():
     items = []
     for iid, h in hs.items():
         lab = op.get(iid, h)
-        path = next((p for sub in ("raw", "generated", "phone") for ext in ("jpg", "png") if (p := DATA / sub / f"{iid}.{ext}").exists()), None)
+        path = next((p for sub in ("raw", "generated", "phone", "edited") for ext in ("jpg", "png") if (p := DATA / sub / f"{iid}.{ext}").exists()), None)
         if path is None or not (lab["contains_object"] and lab["metallic"]):
             continue
-        if iid.startswith("ph_") and iid not in op:
+        if iid.startswith(("ph_", "ed_")) and iid not in op:
             continue  # Haiku-only labels miss faults, so a phone photo only counts once Opus has labeled it
         bb = lab["object_bbox"]
         m = 0.1
@@ -170,21 +172,23 @@ def tune(rs, budgets=BUDGETS):
     Real metal legitimately has bright highlights and dark patina, so a rule that only maximises accuracy drifts into the tail of the
     clean distribution and gives clean photos false advice (it did, on the first run)."""
     tuned = {}
-    for chk, (sk, tk, d) in CHECKS.items():
-        val = sk if callable(sk) else (lambda s, k=sk: s[k])
-        pos = [val(s) for _, n, sev, ex, s in rs if sev >= 2 and chk in ex and s["roi_found"]]
-        neg = [val(s) for _, n, sev, ex, s in rs if (n == "clean" or n in CTRL_TUNE) and s["roi_found"]]
-        if len(pos) < 5 or len(neg) < 5:
-            continue
-        flag = (lambda t: (lambda x: x < t)) if d == "low" else (lambda t: (lambda x: x > t))
-        vals = sorted(set(pos + neg))
-        cands = [(a + b) / 2 for a, b in zip(vals, vals[1:])]
-        fa = lambda c: sum(map(flag(c), neg)) / len(neg)  # noqa: E731
-        rec = lambda c: sum(map(flag(c), pos)) / len(pos)  # noqa: E731
-        ok = [c for c in cands if fa(c) <= budgets[chk]] or [min(cands, key=fa)]
-        best = max(rec(c) for c in ok)
-        tied = [c for c in ok if rec(c) == best]
-        tuned[tk] = float(tied[len(tied) // 2])
+    for chk, feats in CHECKS.items():
+        for sk, tk, d in feats:
+            val = sk if callable(sk) else (lambda s, k=sk: s[k])
+            pos = [val(s) for _, n, sev, ex, s in rs if sev >= 2 and chk in ex and s["roi_found"]]
+            neg = [val(s) for _, n, sev, ex, s in rs if (n == "clean" or n in CTRL_TUNE) and s["roi_found"]]
+            if len(pos) < 5 or len(neg) < 5:
+                continue
+            flag = (lambda t: (lambda x: x < t)) if d == "low" else (lambda t: (lambda x: x > t))
+            vals = sorted(set(pos + neg))
+            cands = [(a + b) / 2 for a, b in zip(vals, vals[1:])]
+            fa = lambda c: sum(map(flag(c), neg)) / len(neg)  # noqa: E731
+            rec = lambda c: sum(map(flag(c), pos)) / len(pos)  # noqa: E731
+            share = budgets[chk] / len(feats)  # the check's false-alarm budget is split evenly between its features
+            ok = [c for c in cands if fa(c) <= share] or [min(cands, key=fa)]
+            best = max(rec(c) for c in ok)
+            tied = [c for c in ok if rec(c) == best]
+            tuned[tk] = float(tied[len(tied) // 2])
     return tuned
 
 

@@ -22,6 +22,36 @@ def _largest_blob(binary):
     return int(stats[1:, cv2.CC_STAT_AREA].max()) if n > 1 else 0
 
 
+EDGE_FINE, EDGE_COARSE = 0.8, 2.0  # Gaussian sigmas (px at NORM_WIDTH) for the edge-sharpness ratio
+NO_EDGES = 99.0  # roi_edge when the object has no strong edges to judge: the check then relies on roi_blur alone
+
+
+def _grad_mag(g, sigma):
+    b = cv2.GaussianBlur(g, (0, 0), sigma)
+    return np.hypot(cv2.Sobel(b, cv2.CV_32F, 1, 0, ksize=3), cv2.Sobel(b, cv2.CV_32F, 0, 1, ksize=3)) / 8.0
+
+
+def _edge_sharpness(gray, m):
+    """Median, over the object's strongest edge ridges, of gradient at a fine scale divided by gradient at a coarse scale.
+    A sharp edge keeps its steepness when you look finely (ratio well above 1); a defocused or shaken edge is already smooth, so the ratio falls to about 1.
+    Contrast-free and independent of how much fine texture or noise the camera adds, which is why it travels between web and phone photos better than Laplacian energy."""
+    g = gray.astype(np.float32)
+    region = cv2.dilate(m.astype(np.uint8), np.ones((21, 21), np.uint8)).astype(bool)
+    fine, coarse = _grad_mag(g, EDGE_FINE), _grad_mag(g, EDGE_COARSE)
+    ridge = (coarse >= cv2.dilate(coarse, np.ones((3, 3), np.uint8)) - 1e-6) & region & (coarse > np.percentile(coarse[region], 85)) & (coarse > 2.0)
+    if ridge.sum() < 60:
+        return NO_EDGES
+    return float(np.median(fine[ridge] / (coarse[ridge] + 1e-3)))
+
+
+def _fill_holes(m):
+    """The object mask plus any holes inside it. Blown-out glare is backdrop-coloured, so the backdrop stripper erases it from the mask and leaves a hole."""
+    pad = np.pad(m.astype(np.uint8), 1)
+    ff = (1 - pad).copy()
+    cv2.floodFill(ff, np.zeros((pad.shape[0] + 2, pad.shape[1] + 2), np.uint8), (0, 0), 2)
+    return ((pad == 1) | (ff == 1))[1:-1, 1:-1]
+
+
 def score(img_bgr: np.ndarray, rect=GUIDE_RECT) -> dict:
     """Metrics for one BGR image. Plain keys are whole-frame (the legacy view); roi_* keys are measured only on the
     object's pixels, found by GrabCut inside `rect` (roi_found=False when no plausible object is there)."""
@@ -63,12 +93,20 @@ def score(img_bgr: np.ndarray, rect=GUIDE_RECT) -> dict:
     bu_sat = interior_sat & box
     bu_area = max(1, int((m | bu_sat).sum()))
     ring_mask = cv2.dilate(m.astype(np.uint8), np.ones((25, 25), np.uint8)).astype(bool) & ~cv2.dilate(m.astype(np.uint8), np.ones((9, 9), np.uint8)).astype(bool)
+    filled = cv2.dilate(_fill_holes(m).astype(np.uint8), np.ones((5, 5), np.uint8)).astype(bool)
+    areas, inside = np.bincount(cc.ravel(), minlength=ncc), np.bincount(cc[filled].ravel(), minlength=ncc)
+    on_obj = (inside >= 0.5 * areas) & (areas > 0) & ~np.isin(np.arange(ncc), np.append(edge_labels, 0))  # saturated blobs mostly on the object, not touching the frame edge
+    glare_in = int(areas[on_obj].max()) if on_obj.any() else 0
     lap = np.abs(cv2.Laplacian(gray, cv2.CV_64F))
     near = cv2.dilate(m.astype(np.uint8), np.ones((5, 5), np.uint8)).astype(bool)  # include the silhouette edge
     s.update({
         "roi_found": True,
         "roi_area_frac": float(m.mean()),
         "roi_blur": float(np.percentile(lap[near], 95)),       # sharpest edges of the object
+        "roi_edge": _edge_sharpness(gray, m),                  # how steep the object's strongest edges are at a fine scale vs a coarse one
+        "roi_glare_in": glare_in / gray.size,                  # largest saturated blob that sits on the object, over frame area
+        "roi_glare_in_o": glare_in / max(1, int(filled.sum())), # ... over object area
+        "roi_hot": glare_in / gray.size * _largest_blob(bu_sat) / max(1, int(bu_sat.sum())),  # that blob's share of the frame, discounted when the saturated pixels are scattered speckle rather than one hotspot
         "roi_mean_lum": float(np.median(px)),                  # median ignores a small shadow/background leak
         "roi_bright_frac": float((px >= 250).mean()),
         "roi_contrast_std": float(np.percentile(px, 95) - np.percentile(px, 5)),
@@ -98,14 +136,14 @@ def verdict(s: dict, t: dict | None = None, mode: str = "roi") -> dict:
         if s["roi_found"]:
             # Chosen by grouped cross-validation (scripts/evaluate.py CHECKS): exposure is the brighter of the object and the frame (a lit spoon on a black backdrop is not underexposed; a dark spoon on a bright backdrop is not either) and glare is frame-level because
             # object masks can erase a blown-out object or include a dark-coloured object's backdrop.
-            k = dict(blur=s["roi_blur"], lum=max(s["roi_p95"], s["frame_p95"]), bright=s["roi_bright_u"],
-                     contrast=s["roi_contrast"], glare=s["frame_glare_int"])
+            k = dict(blur=s["roi_blur"], edge=s["roi_edge"], lum=max(s["roi_p95"], s["frame_p95"]), bright=s["roi_bright_u"],
+                     contrast=s["roi_contrast"], glare=s["frame_glare_int"], hot=s["roi_hot"])
         else:
             failed.append("no_object")
     if s["min_side_px"] < t["min_side_px"]:
         failed.append("resolution")
     if k:
-        if k["blur"] < t["blur_min"]:
+        if k["blur"] < t["blur_min"] or k.get("edge", NO_EDGES) < t["edge_min"]:
             failed.append("blur")
         if k["lum"] < t["dark_max_mean"]:
             failed.append("dark")
@@ -113,7 +151,7 @@ def verdict(s: dict, t: dict | None = None, mode: str = "roi") -> dict:
             failed.append("bright")
         if k["contrast"] < t["contrast_min_std"]:
             failed.append("contrast")
-        if k["glare"] > t["glare_max_frac"]:
+        if k["glare"] > t["glare_max_frac"] or k.get("hot", 0.0) > t["hot_max_frac"]:
             failed.append("glare")
     return {"passed": not failed, "failed": failed, "reasons": [MESSAGES[f] for f in failed]}
 

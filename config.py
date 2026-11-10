@@ -23,9 +23,11 @@ NORM_WIDTH = 640  # all scoring happens at this width so blur scores are size-in
 THRESHOLDS = {
     "min_side_px": 800,        # fail if min(h, w) below
     "blur_min": 12.0,          # fail if p95 |Laplacian| on the object below (draft until evaluate.py tunes it)
+    "edge_min": 0.0,           # fail if the object's edge-sharpness ratio is below (0 = off until evaluate.py tunes it)
     "dark_max_mean": 100.0,    # fail if the frame's 95th-percentile luminance is below (underexposed: nothing bright anywhere)
     "bright_max_frac": 0.15,   # fail if fraction of pixels >= 250 above
     "contrast_min_std": 25.0,  # fail if (object p95-p5 spread + its separation from its surroundings) is below
+    "hot_max_frac": 1.0,       # fail glare if the largest on-object saturated blob (discounted when speckled) / frame area is above (1.0 = off until tuned)
     "glare_max_frac": 0.01,    # fail if the largest interior saturated blob / frame area is above
 }
 
